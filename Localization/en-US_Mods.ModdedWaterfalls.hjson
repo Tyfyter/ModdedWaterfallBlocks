@@ -1,0 +1,16 @@
+WaterfallItem_0: Pure Waterfall Block
+WaterfallItem_Corruption: Corruption Waterfall Block
+WaterfallItem_Jungle: Jungle Waterfall Block
+WaterfallItem_Hallow: Hallow Waterfall Block
+WaterfallItem_Snow: Snow Waterfall Block
+WaterfallItem_Desert: Oasis Waterfall Block
+WaterfallItem_DirtLayer: Underground Waterfall Block
+WaterfallItem_RockLayer: Cavern Waterfall Block
+WaterfallItem_BloodMoon: Blood Moon Waterfall Block
+WaterfallItem_Crimson: Crimson Waterfall Block
+WaterfallItem_UndergroundDesert: Desert Waterfall Block
+WaterfallItem_Ocean: Ocean Waterfall Block
+WaterfallItem_Origins_Brine_Water_Style: Brine Waterfall Block
+WaterfallItem_Origins_Riven_Water_Style: Riven Waterfall Block
+RecipeCondition: With the appropriate water style active
+WaterfallRecipeGroup: any Waterfall Block
