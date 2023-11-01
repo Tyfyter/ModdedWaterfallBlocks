@@ -23,7 +23,11 @@ float2 uMax;*/
 
 float4 Mapper(float4 sampleColor : COLOR0, float2 coords : TEXCOORD0) : COLOR0 {
 	float4 color = tex2D(uImage0, coords);
-	if (color.b == 0) color = tex2D(uImage1, color.rg) * color.a;
+	if (color.b == 0 && color.a != 0) {
+		float a = color.a;
+		color = tex2D(uImage1, color.rg);
+		color *= a / color.a;
+	}
 	return color;
 }
 
