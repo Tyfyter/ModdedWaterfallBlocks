@@ -1,1 +1,1 @@
-More Waterfall Blocks is a pretty cool mod, it does...this. Modify this file with a description of your mod.
+Automatically generates waterfall blocks and walls for both vanilla and modded water styles
