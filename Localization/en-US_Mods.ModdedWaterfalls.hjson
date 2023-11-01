@@ -12,7 +12,6 @@ WaterfallItem_UndergroundDesert: Desert Waterfall Block
 WaterfallItem_Ocean: Ocean Waterfall Block
 WaterfallItem_Origins_Brine_Water_Style: Brine Waterfall Block
 WaterfallItem_Origins_Riven_Water_Style: Riven Waterfall Block
-
 WaterfallWallItem_0: Pure Waterfall Wall
 WaterfallWallItem_Corruption: Corrupt Waterfall Wall
 WaterfallWallItem_Jungle: Jungle Waterfall Wall
@@ -27,7 +26,6 @@ WaterfallWallItem_UndergroundDesert: Desert Waterfall Wall
 WaterfallWallItem_Ocean: Ocean Waterfall Wall
 WaterfallWallItem_Origins_Brine_Water_Style: Brine Waterfall Wall
 WaterfallWallItem_Origins_Riven_Water_Style: Riven Waterfall Wall
-
 RecipeCondition: With the appropriate water style active
 WaterfallRecipeGroup: any Waterfall Block
 WaterWallRecipeGroup: any Waterfall Wall
