@@ -1,1 +1,5 @@
 Automatically generates waterfall blocks and walls for both vanilla and modded water styles
+
+Unfortunately if your mod manually adds a water style using Mod.AddContent it'll have to call this mod's Call method with itself as the first argument and an instance of the style as the second to be compatible, and it may need to be sorted before this
+If your water styles are all autoloaded then your mod should automatically be compatible
+If you want a water style not to generate content in this mod you can give it a static bool property named ModdedWaterfalls_HasOwnWaterfall and have it return true

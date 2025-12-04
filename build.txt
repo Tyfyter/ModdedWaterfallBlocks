@@ -1,4 +1,4 @@
 displayName = More Waterfall Blocks
-author = Tyfyter2002
-version = 1.0
-homepage = https://github.com/Tyfyter/ModdedWaterfallBlocks
+author = Moonlight Glint
+version = 1.0.0.2
+homepage = https://tyfyter.github.io/?ModdedWaterfallBlocks

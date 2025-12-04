@@ -27,5 +27,21 @@ WaterfallWallItem_Ocean: Ocean Waterfall Wall
 WaterfallWallItem_Origins_Brine_Water_Style: Brine Waterfall Wall
 WaterfallWallItem_Origins_Riven_Water_Style: Riven Waterfall Wall
 RecipeCondition: With the appropriate water style active
-WaterfallRecipeGroup: any Waterfall Block
-WaterWallRecipeGroup: any Waterfall Wall
+WaterfallRecipeGroup: Any Waterfall Block
+WaterWallRecipeGroup: Any Waterfall Wall
+WaterfallItem_ThoriumMod_AquaticDepthsWaterStyle: Deep Waterfall Block
+WaterfallWallItem_ThoriumMod_AquaticDepthsWaterStyle: Deep Waterfall Wall
+WaterfallItem_AquaticDepthsWaterStyle: Aquatic Depths Waterfall Block
+WaterfallWallItem_AquaticDepthsWaterStyle: Aquatic Depths Waterfall Wall
+WaterfallItem_Ashen_Water_Style: Ashen Waterfall Block
+WaterfallWallItem_Ashen_Water_Style: Ashen Waterfall Wall
+WaterfallItem_Brine_Water_Style: Brine Waterfall Block
+WaterfallWallItem_Brine_Water_Style: Brine Waterfall Wall
+WaterfallItem_Defiled_Water_Style: Defiled Waterfall Block
+WaterfallWallItem_Defiled_Water_Style: Defiled Waterfall Wall
+WaterfallItem_Riven_Water_Style: Riven Waterfall Block
+WaterfallWallItem_Riven_Water_Style: Riven Waterfall Wall
+WaterfallItem_Origins_Ashen_Water_Style: Ashen Waterfall Block
+WaterfallWallItem_Origins_Ashen_Water_Style: Ashen Waterfall Wall
+WaterfallItem_Origins_Defiled_Water_Style: Defiled Waterfall Block
+WaterfallWallItem_Origins_Defiled_Water_Style: Defiled Waterfall Wall

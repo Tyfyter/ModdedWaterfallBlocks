@@ -15,15 +15,13 @@ using Terraria.Graphics.Shaders;
 using Terraria.ID;
 using Terraria.Localization;
 using Terraria.ModLoader;
+using Terraria.ModLoader.Core;
+using static Terraria.Graphics.Capture.IL_CaptureBiome.Sets;
 
 namespace ModdedWaterfalls {
 	public class ModdedWaterfalls : Mod {
 		static ConstructorInfo assetCtor;
 		static MethodInfo submitLoadedContent;
-		internal static Dictionary<int, WaterfallBlock> blocksByStyle = new();
-		internal static Dictionary<int, WaterfallItem> itemsByStyle = new();
-		internal static Dictionary<int, WaterfallWall> wallsByStyle = new();
-		internal static Dictionary<int, WaterfallWallItem> wallItemsByStyle = new();
 		static MiscShaderData shader;
 		public static Asset<Texture2D> blockTexture;
 		public static Asset<Texture2D> itemTexture;
@@ -31,13 +29,11 @@ namespace ModdedWaterfalls {
 		public static Asset<Texture2D> wallTexture;
 		public static Asset<Texture2D> wallItemTexture;
 		public static Dictionary<CaptureBiome, string> captureBiomeNames = new();
+		static int styleCount = 15;
+		static List<ModWaterStyle> styleInstancesForServers = new(new ModWaterStyle[15]);
+		public MethodInfo setStyleMod = typeof(ModType).GetProperty("Mod").SetMethod;
+		static Queue<(ModWaterStyle, Mod)> queuedWaterStyles = new();
 		public override void Unload() {
-			blocksByStyle = null;
-			itemsByStyle = null;
-
-			wallsByStyle = null;
-			wallItemsByStyle = null;
-
 			blockTexture = null;
 			itemTexture = null;
 
@@ -46,30 +42,74 @@ namespace ModdedWaterfalls {
 
 			shader = null;
 			captureBiomeNames = null;
+			styleCount = 0;
+			queuedWaterStyles = new();
+		}
+		public override object Call(params object[] args) {
+			queuedWaterStyles.Enqueue(((ModWaterStyle)args[1], (Mod)args[0]));
+			return null;
 		}
 		public override void Load() {
-			assetCtor = typeof(Asset<Texture2D>).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, new Type[] { typeof(string) });
+			assetCtor = typeof(Asset<Texture2D>).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, [typeof(string)]);
 			submitLoadedContent = typeof(Asset<Texture2D>).GetMethod("SubmitLoadedContent", BindingFlags.NonPublic | BindingFlags.Instance);
 			foreach (FieldInfo field in typeof(CaptureBiome.Styles).GetFields(BindingFlags.Public | BindingFlags.Static)) {
 				captureBiomeNames.Add((CaptureBiome)field.GetValue(null), field.Name);
 			}
-			for (int i = 0; i < TextureAssets.Liquid.Length; i++) {
+			for (int i = 0; i < 15; i++) {
 				if (i is 1 or 11 or 14) continue;
-				AddContent(new WaterfallBlock(i));
+				AddContent(new WaterfallBlock(i, GetStyleName(i)));
+				styleCount++;
+				static string GetStyleName(int style) {
+					if (CaptureBiome.BiomesByWaterStyle[style] is CaptureBiome biome) {
+						return captureBiomeNames[biome];
+					}
+					return style.ToString();
+				}
 			}
-			WaterStylesLoader stylesLoader = LoaderManager.Get<WaterStylesLoader>();
-			int totalCount = (int)typeof(Loader).GetProperty("TotalCount", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(stylesLoader);
-			for (int i = 15; i < totalCount; i++) {
-				if (stylesLoader.Get(i).GetType().GetProperty("ModdedWaterfalls_HasOwnWaterfall", BindingFlags.Public | BindingFlags.Static)?.GetValue(null) is bool hasFall && hasFall) continue;
-				AddContent(new WaterfallBlock(i));
+			if (Main.dedServ) {
+				foreach (Mod mod in ModLoader.Mods) {
+					if (mod.Code is null || !mod.ContentAutoloadingEnabled) continue;
+					LoaderUtils.ForEachAndAggregateExceptions(
+					(from t in AssemblyManager.GetLoadableTypes(mod.Code)
+					where !t.IsAbstract && !t.ContainsGenericParameters
+					where t.IsAssignableTo(typeof(ModWaterStyle))
+					where t.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, Type.EmptyTypes) != null
+					where AutoloadAttribute.GetValue(t).Value
+					select t).OrderBy(type => type.FullName, StringComparer.InvariantCulture), t => {
+						if (t.GetProperty("ModdedWaterfalls_HasOwnWaterfall", BindingFlags.Public | BindingFlags.Static)?.GetValue(null) is bool hasFall && hasFall) return;
+						ModWaterStyle style = (ModWaterStyle)Activator.CreateInstance(t, nonPublic: true);
+						setStyleMod.Invoke(style, [mod]);
+						styleInstancesForServers.Add(style);
+						AddContent(new WaterfallBlock(styleCount, $"{style.Mod.Name}_{style.Name}"));
+						styleCount++;
+					});
+				}
+			} else {
+				WaterStylesLoader stylesLoader = LoaderManager.Get<WaterStylesLoader>();
+				int totalCount = (int)typeof(Loader).GetProperty("TotalCount", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(stylesLoader);
+				for (int i = 15; i < totalCount; i++) {
+					if (stylesLoader.Get(i) is not ModWaterStyle style) continue;
+					if (!AutoloadAttribute.GetValue(style.GetType()).Value) continue;
+					if (stylesLoader.Get(i).GetType().GetProperty("ModdedWaterfalls_HasOwnWaterfall", BindingFlags.Public | BindingFlags.Static)?.GetValue(null) is bool hasFall && hasFall) continue;
+					AddContent(new WaterfallBlock(i, $"{style.Mod.Name}_{style.Name}"));
+					styleCount++;
+				}
+				shader = new MiscShaderData(Assets.Request<Effect>("Effects/Mapper", AssetRequestMode.ImmediateLoad), "Mapper");
+				GameShaders.Misc["WaterfallGenerator"] = shader;
+				blockTexture = Assets.Request<Texture2D>("Waterfall_Block_Map");
+				itemTexture = Assets.Request<Texture2D>("Waterfall_Item_Map");
+				wallTexture = Assets.Request<Texture2D>("Waterfall_Wall_Map");
+				wallItemTexture = Assets.Request<Texture2D>("Waterfall_Wall_Item_Map");
 			}
-			if (Main.dedServ) return;
-			shader = new MiscShaderData(new Ref<Effect>(Assets.Request<Effect>("Effects/Mapper", AssetRequestMode.ImmediateLoad).Value), "Mapper");
-			GameShaders.Misc["WaterfallGenerator"] = shader;
-			blockTexture = Assets.Request<Texture2D>("Waterfall_Block_Map");
-			itemTexture = Assets.Request<Texture2D>("Waterfall_Item_Map");
-			wallTexture = Assets.Request<Texture2D>("Waterfall_Wall_Map");
-			wallItemTexture = Assets.Request<Texture2D>("Waterfall_Wall_Item_Map");
+
+			foreach ((ModWaterStyle style, Mod mod) in queuedWaterStyles) {
+				setStyleMod.Invoke(style, [mod]);
+				styleInstancesForServers.Add(style);
+				AddContent(new WaterfallBlock(styleCount, $"{style.Mod.Name}_{style.Name}"));
+				styleCount++;
+			}
+			queuedWaterStyles = null;
+			Logger.Info("Waterfall style count: " + styleCount);
 		}
 		public static Asset<Texture2D> GenerateTexture(string name, Texture2D baseTexture, Asset<Texture2D> palette) {
 			Asset<Texture2D> asset = (Asset<Texture2D>)assetCtor.Invoke(new object[] { name });
@@ -91,37 +131,28 @@ namespace ModdedWaterfalls {
 			0);
 			Main.spriteBatch.End();
 			Main.graphics.GraphicsDevice.SetRenderTarget(null);
-			submitLoadedContent.Invoke(asset, new object[] { (Texture2D)target, null });
-			/*using (Stream stream = File.OpenWrite("C:\\Users\\Tyfyter\\Documents\\My Games\\Terraria\\tModLoader\\ModSources\\ModdedWaterfalls\\GenTex.png")) {
-				target.SaveAsPng(stream, target.Width, target.Height);
-			}*/
+			submitLoadedContent.Invoke(asset, [(Texture2D)target, null]);
 			return asset;
 		}
-		public static string GetStyleName(int style) {
-			if (style < 15) {
-				if (CaptureBiome.BiomesByWaterStyle[style] is CaptureBiome biome) {
-					return captureBiomeNames[biome];
-				}
-				return style.ToString();
-			}
-			ModWaterStyle waterStyle = LoaderManager.Get<WaterStylesLoader>().Get(style);
-			return waterStyle.Mod.Name + "_" + waterStyle.Name;
+		public static string GetStyleNameForTranslation(int style) {
+			ModWaterStyle waterStyle = Main.dedServ ? styleInstancesForServers[style] : LoaderManager.Get<WaterStylesLoader>().Get(style);
+			return waterStyle.PrettyPrintName().Replace("_ ", " ").Replace(" Water Style", "");
 		}
 	}
 	public class ModWaterfallSystem : ModSystem {
-		public static RecipeGroup nonVanillaWaterfalls;
-		public static RecipeGroup nonVanillaWaterWalls;
+		static RecipeGroup nonVanillaWaterfalls;
+		static RecipeGroup nonVanillaWaterWalls;
 		public override void AddRecipeGroups() {
 			RecipeGroup.RegisterGroup("NonVanillaWaterfalls",
 				nonVanillaWaterfalls = new RecipeGroup(
 					() => Language.GetOrRegister($"Mods.{nameof(ModdedWaterfalls)}.WaterfallRecipeGroup").Value,
-					ModdedWaterfalls.itemsByStyle.Values.First().Type
+					ModContent.GetContent<WaterfallItem>().Select(i => i.Type).ToArray()
 				)
 			);
 			RecipeGroup.RegisterGroup("NonVanillaWaterWalls",
 				nonVanillaWaterWalls = new RecipeGroup(
 					() => Language.GetOrRegister($"Mods.{nameof(ModdedWaterfalls)}.WaterWallRecipeGroup").Value,
-					ModdedWaterfalls.itemsByStyle.Values.First().Type
+					ModContent.GetContent<WaterfallWallItem>().Select(i => i.Type).ToArray()
 				)
 			);
 		}
@@ -141,15 +172,18 @@ namespace ModdedWaterfalls {
 	[Autoload(false)]
 	public class WaterfallBlock : ModTile {
 		public override string Texture => nameof(ModdedWaterfalls) + "/Waterfall_Block_Map";
-		public override string Name => "Waterfall_Block_Style_" + ModdedWaterfalls.GetStyleName(style);
-		readonly int style;
-		public WaterfallBlock(int style) {
+		public override string Name => "Waterfall_Block_Style_" + name;
+		public readonly int style;
+		public readonly string name;
+		public WaterfallItem Item { get; private set; }
+		public WaterfallWall Wall { get; private set; }
+		public WaterfallBlock(int style, string name) {
 			this.style = style;
-			ModdedWaterfalls.blocksByStyle.Add(style, this);
+			this.name = name;
 		}
 		public override void Load() {
-			Mod.AddContent(new WaterfallItem(style));
-			Mod.AddContent(new WaterfallWall(style));
+			Mod.AddContent(Item = new(this));
+			Mod.AddContent(Wall = new(this));
 		}
 		public override void SetStaticDefaults() {
 			Main.tileSolid[Type] = true;
@@ -181,37 +215,33 @@ namespace ModdedWaterfalls {
 		}*/
 	}
 	[Autoload(false)]
-	public class WaterfallItem : ModItem {
+	public class WaterfallItem(WaterfallBlock style) : ModItem {
 		protected override bool CloneNewInstances => true;
 		public override string Texture => nameof(ModdedWaterfalls) + "/Waterfall_Item_Map";
-		public override string Name => "Waterfall_Item_Style_" + ModdedWaterfalls.GetStyleName(style);
+		public override string Name => "Waterfall_Item_Style_" + style.name;
 		public override LocalizedText DisplayName => Language.GetOrRegister(
-			$"Mods.{nameof(ModdedWaterfalls)}.WaterfallItem_{ModdedWaterfalls.GetStyleName(style)}",
-			() => $"{ModdedWaterfalls.GetStyleName(style)} Waterfall Block"
+			$"Mods.{nameof(ModdedWaterfalls)}.WaterfallItem_{style.name}",
+			() => $"{ModdedWaterfalls.GetStyleNameForTranslation(style.style)} Waterfall Block"
 		);
 		public override LocalizedText Tooltip => LocalizedText.Empty;
-		readonly int style;
-		public WaterfallItem(int style) {
-			this.style = style;
-			ModdedWaterfalls.itemsByStyle.Add(style, this);
-		}
+		readonly WaterfallBlock style = style;
+
 		public override void SetStaticDefaults() {
 			if (Main.dedServ) return;
-			TextureAssets.Liquid[style].Wait();
+			TextureAssets.Liquid[style.style].Wait();
 			Main.QueueMainThreadAction(GenerateTexture);
 		}
 		void GenerateTexture() {
 			ModdedWaterfalls.itemTexture.Wait();
-			TextureAssets.Item[Type] = ModdedWaterfalls.GenerateTexture(Name, ModdedWaterfalls.itemTexture.Value, TextureAssets.Liquid[style]);
+			TextureAssets.Item[Type] = ModdedWaterfalls.GenerateTexture(Name, ModdedWaterfalls.itemTexture.Value, TextureAssets.Liquid[style.style]);
 		}
 		public override void SetDefaults() {
-			Item.DefaultToPlaceableTile(ModdedWaterfalls.blocksByStyle[style].Type);
+			Item.DefaultToPlaceableTile(style.Type);
 		}
 		public override void AddRecipes() {
-			ModWaterfallSystem.nonVanillaWaterfalls.ValidItems.Add(Type);
 			CreateRecipe()
 			.AddIngredient(ItemID.WaterfallBlock)
-			.AddCondition(Language.GetOrRegister($"Mods.{nameof(ModdedWaterfalls)}.RecipeCondition"), () => Main.waterStyle == style)
+			.AddCondition(Language.GetOrRegister($"Mods.{nameof(ModdedWaterfalls)}.RecipeCondition"), () => Main.waterStyle == style.style)
 			.Register();
 		}
 		public override void OnResearched(bool fullyResearched) {
@@ -237,14 +267,11 @@ namespace ModdedWaterfalls {
 		}*/
 	}
 	[Autoload(false)]
-	public class WaterfallWall : ModWall {
+	public class WaterfallWall(WaterfallBlock style) : ModWall {
 		public override string Texture => nameof(ModdedWaterfalls) + "/Waterfall_Wall_Map";
-		public override string Name => "Waterfall_Wall_Style_" + ModdedWaterfalls.GetStyleName(style);
-		readonly int style;
-		public WaterfallWall(int style) {
-			this.style = style;
-			ModdedWaterfalls.wallsByStyle.Add(style, this);
-		}
+		public override string Name => "Waterfall_Wall_Style_" + style.name;
+		readonly WaterfallBlock style = style;
+
 		public override void Load() {
 			Mod.AddContent(new WaterfallWallItem(style));
 		}
@@ -254,56 +281,52 @@ namespace ModdedWaterfalls {
 			Main.wallHouse[Type] = true;
 			HitSound = SoundID.Shatter;
 			if (Main.dedServ) return;
-			TextureAssets.Liquid[style].Wait();
+			TextureAssets.Liquid[style.style].Wait();
 			Main.QueueMainThreadAction(GenerateTexture);
 		}
 		void GenerateTexture() {
 			ModdedWaterfalls.wallTexture.Wait();
-			TextureAssets.Wall[Type] = ModdedWaterfalls.GenerateTexture(Name, ModdedWaterfalls.wallTexture.Value, TextureAssets.Liquid[style]);
+			TextureAssets.Wall[Type] = ModdedWaterfalls.GenerateTexture(Name, ModdedWaterfalls.wallTexture.Value, TextureAssets.Liquid[style.style]);
 		}
 		public override void AnimateWall(ref byte frame, ref byte frameCounter) {
 			frame = Main.wallFrame[WallID.Waterfall];
 		}
 	}
 	[Autoload(false)]
-	public class WaterfallWallItem : ModItem {
+	public class WaterfallWallItem(WaterfallBlock style) : ModItem {
 		protected override bool CloneNewInstances => true;
 		public override string Texture => nameof(ModdedWaterfalls) + "/Waterfall_Wall_Item_Map";
-		public override string Name => "Waterfall_Wall_Item_Style_" + ModdedWaterfalls.GetStyleName(style);
+		public override string Name => "Waterfall_Wall_Item_Style_" + style.name;
 		public override LocalizedText DisplayName => Language.GetOrRegister(
-			$"Mods.{nameof(ModdedWaterfalls)}.WaterfallWallItem_{ModdedWaterfalls.GetStyleName(style)}",
-			() => $"{ModdedWaterfalls.GetStyleName(style)} Waterfall Wall"
+			$"Mods.{nameof(ModdedWaterfalls)}.WaterfallWallItem_{style.name}",
+			() => $"{ModdedWaterfalls.GetStyleNameForTranslation(style.style)} Waterfall Wall"
 		);
 		public override LocalizedText Tooltip => LocalizedText.Empty;
-		readonly int style;
-		public WaterfallWallItem(int style) {
-			this.style = style;
-			ModdedWaterfalls.wallItemsByStyle.Add(style, this);
-		}
+		readonly WaterfallBlock style = style;
+
 		public override void SetStaticDefaults() {
 			if (Main.dedServ) return;
-			TextureAssets.Liquid[style].Wait();
+			TextureAssets.Liquid[style.style].Wait();
 			Main.QueueMainThreadAction(GenerateTexture);
 		}
 		void GenerateTexture() {
 			ModdedWaterfalls.wallItemTexture.Wait();
-			TextureAssets.Item[Type] = ModdedWaterfalls.GenerateTexture(Name, ModdedWaterfalls.wallItemTexture.Value, TextureAssets.Liquid[style]);
+			TextureAssets.Item[Type] = ModdedWaterfalls.GenerateTexture(Name, ModdedWaterfalls.wallItemTexture.Value, TextureAssets.Liquid[style.style]);
 		}
 		public override void SetDefaults() {
-			Item.DefaultToPlaceableWall(ModdedWaterfalls.wallsByStyle[style].Type);
+			Item.DefaultToPlaceableWall(style.Wall.Type);
 		}
 		public override void AddRecipes() {
-			ModWaterfallSystem.nonVanillaWaterWalls.ValidItems.Add(Type);
 			CreateRecipe()
 			.AddIngredient(ItemID.WaterfallWall)
-			.AddCondition(Language.GetOrRegister($"Mods.{nameof(ModdedWaterfalls)}.RecipeCondition"), () => Main.waterStyle == style)
+			.AddCondition(Language.GetOrRegister($"Mods.{nameof(ModdedWaterfalls)}.RecipeCondition"), () => Main.waterStyle == style.style)
 			.Register();
 
 			CreateRecipe(4)
-			.AddIngredient(ModdedWaterfalls.itemsByStyle[style].Type)
+			.AddIngredient(style.Item.Type)
 			.Register();
 
-			Recipe.Create(ModdedWaterfalls.itemsByStyle[style].Type)
+			Recipe.Create(style.Item.Type)
 			.AddIngredient(Type, 4)
 			.Register();
 		}
